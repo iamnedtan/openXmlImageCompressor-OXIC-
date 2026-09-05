@@ -21,6 +21,12 @@ function check(label, ok, detail = '') {
 }
 const near = (a, b, tol) => Math.abs(a - b) <= tol;
 
+const EXPECTED_MIME = {
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+};
+
 const py = (script, ...args) => execFileSync('python3', [join(HERE, script), ...args], { encoding: 'utf8' });
 const inspect = file => JSON.parse(py('inspect.py', file));
 function validate(file) {
@@ -81,6 +87,8 @@ async function setOptions(page, opts) {
   return snapshot(page);
 }
 
+const builtMime = page => page.evaluate(async () => (await window.__oxic.buildFile()).type);
+
 async function download(page, as) {
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#save')]);
   const path = join(OUT, as);
@@ -132,6 +140,10 @@ async function main() {
     let dl = await download(page, fixture.replace('.', '-both.'));
     check('output keeps the extension and gains the suffix',
       dl.suggested === fixture.replace(/\.(\w+)$/, '-compressed.$1'), dl.suggested);
+    // A generic application/zip type makes Chrome save book.xlsx as book.xlsx.zip.
+    const mime = await builtMime(page);
+    check('output carries its real OOXML media type, not application/zip',
+      mime === EXPECTED_MIME[fixture.split('.').pop()], mime);
     check('output is smaller than the original', dl.size < s.fileSize,
       `${dl.size} vs ${s.fileSize}`);
     check('output validates as OOXML', validate(dl.path) === null, validate(dl.path));
