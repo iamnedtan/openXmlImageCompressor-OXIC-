@@ -1,0 +1,1005 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OXIC — OpenXML Image Compressor</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --panel-2: #fbfbfd;
+    --ink: #16181d;
+    --ink-dim: #5c626e;
+    --ink-faint: #8a909c;
+    --line: #e3e5ea;
+    --accent: #2f6fed;
+    --accent-ink: #ffffff;
+    --good: #1a7f4f;
+    --warn: #9a6200;
+    --bad: #b3261e;
+    --radius: 10px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a;
+      --panel: #1c1f25;
+      --panel-2: #22262d;
+      --ink: #e9ebef;
+      --ink-dim: #a3abb8;
+      --ink-faint: #7b8391;
+      --line: #2f343d;
+      --accent: #5b8dff;
+      --accent-ink: #0d1016;
+      --good: #4ec98a;
+      --warn: #e0a33c;
+      --bad: #ff6b60;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 14px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 28px 20px 80px;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; }
+  header { margin-bottom: 22px; }
+  h1 { font-size: 21px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h1 .tag {
+    font: 600 11px/1 var(--mono);
+    letter-spacing: 0.08em;
+    background: var(--accent); color: var(--accent-ink);
+    padding: 4px 6px; border-radius: 5px; vertical-align: 3px; margin-right: 8px;
+  }
+  .sub { color: var(--ink-dim); margin: 0; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px; margin-bottom: 18px;
+  }
+  .panel > h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--ink-faint); margin: 0 0 14px; font-weight: 600;
+  }
+
+  /* ---- drop zone ---- */
+  #drop {
+    border: 2px dashed var(--line); border-radius: var(--radius);
+    padding: 40px 20px; text-align: center; cursor: pointer;
+    background: var(--panel); transition: border-color .15s, background .15s;
+  }
+  #drop:hover, #drop.over { border-color: var(--accent); background: var(--panel-2); }
+  #drop.over { border-style: solid; }
+  #drop .big { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+  #drop .small { color: var(--ink-dim); font-size: 13px; }
+  #drop input { display: none; }
+
+  /* ---- stats ---- */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px;
+           background: var(--line); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .stat { background: var(--panel-2); padding: 12px 14px; }
+  .stat .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); }
+  .stat .v { font-size: 19px; font-weight: 650; margin-top: 3px; letter-spacing: -0.02em; }
+  .stat .n { font-size: 12px; color: var(--ink-dim); }
+  .filename { font-family: var(--mono); font-size: 13px; color: var(--ink-dim); margin-bottom: 12px; word-break: break-all; }
+
+  /* ---- controls ---- */
+  .ctl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px; }
+  fieldset { border: 0; margin: 0; padding: 0; }
+  legend, .lbl {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--ink-faint); font-weight: 600; padding: 0; margin-bottom: 8px; display: block;
+  }
+  .seg { display: flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg label { flex: 1; }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg span {
+    display: block; text-align: center; padding: 7px 4px; cursor: pointer;
+    background: var(--panel-2); font-size: 13px; border-right: 1px solid var(--line);
+  }
+  .seg label:last-child span { border-right: 0; }
+  .seg input:checked + span { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .seg input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .row { display: flex; align-items: center; gap: 10px; }
+  input[type=range] { flex: 1; accent-color: var(--accent); min-width: 0; }
+  input[type=number], input[type=text] {
+    background: var(--panel-2); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 7px; padding: 6px 9px; font: inherit; width: 100%;
+  }
+  input[type=number] { width: 92px; flex: none; font-family: var(--mono); }
+  .val { font-family: var(--mono); font-size: 13px; min-width: 44px; text-align: right; color: var(--ink-dim); }
+  .check { display: flex; gap: 9px; align-items: flex-start; cursor: pointer; }
+  .check input { accent-color: var(--accent); margin: 3px 0 0; flex: none; }
+  .check .hint { display: block; color: var(--ink-faint); font-size: 12px; margin-top: 2px; }
+  .disabled { opacity: .45; pointer-events: none; }
+
+  /* ---- result bar ---- */
+  #resultbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 18px;
+    border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--panel-2); padding: 16px 18px; margin-bottom: 18px;
+  }
+  .headline { font-size: 15px; }
+  .headline b { font-size: 22px; letter-spacing: -0.02em; }
+  .savings { color: var(--good); font-weight: 650; }
+  .savings.none { color: var(--ink-dim); }
+  .grow { flex: 1 1 auto; }
+  button {
+    font: inherit; font-weight: 600; border: 1px solid transparent; border-radius: 8px;
+    padding: 9px 16px; cursor: pointer; background: var(--accent); color: var(--accent-ink);
+  }
+  button.ghost { background: transparent; color: var(--ink-dim); border-color: var(--line); font-weight: 500; }
+  button:disabled { opacity: .5; cursor: default; }
+  progress { width: 160px; height: 6px; accent-color: var(--accent); }
+
+  /* ---- table ---- */
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 11px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { background: var(--panel-2); font-size: 11px; text-transform: uppercase;
+       letter-spacing: 0.05em; color: var(--ink-faint); position: sticky; top: 0; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.num { text-align: right; font-family: var(--mono); }
+  td.part { font-family: var(--mono); max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+  .pill { font-size: 11px; padding: 2px 7px; border-radius: 20px; background: var(--panel-2); border: 1px solid var(--line); color: var(--ink-dim); }
+  .pill.ok { color: var(--good); border-color: currentColor; }
+  .pill.conv { color: var(--accent); border-color: currentColor; }
+  .delta { color: var(--good); }
+  .delta.zero { color: var(--ink-faint); }
+
+  .note { color: var(--ink-dim); font-size: 13px; margin: 12px 0 0; }
+  .msg { padding: 12px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); margin-bottom: 18px; }
+  .msg.error { border-color: var(--bad); color: var(--bad); }
+  .msg.warn { border-color: var(--warn); color: var(--warn); }
+  [hidden] { display: none !important; }
+  footer { color: var(--ink-faint); font-size: 12px; text-align: center; margin-top: 34px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1><span class="tag">OXIC</span>OpenXML Image Compressor</h1>
+    <p class="sub">Shrink <code>.xlsx</code>, <code>.docx</code> and <code>.pptx</code> files by resizing and recompressing the images inside them. Everything runs in your browser — nothing is uploaded.</p>
+  </header>
+
+  <div id="msg" class="msg" hidden></div>
+
+  <div id="drop" tabindex="0" role="button" aria-label="Choose an OpenXML file">
+    <div class="big">Drop an Office file here</div>
+    <div class="small">or click to choose &nbsp;·&nbsp; .xlsx .xlsm .xltx .docx .docm .dotx .pptx .pptm .potx</div>
+    <input type="file" id="file" accept=".xlsx,.xlsm,.xltx,.docx,.docm,.dotx,.pptx,.pptm,.potx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation">
+  </div>
+
+  <main id="report" hidden>
+
+    <section class="panel">
+      <h2>File</h2>
+      <div class="filename" id="fname"></div>
+      <div class="stats" id="stats"></div>
+      <p class="note" id="mediaNote"></p>
+    </section>
+
+    <section class="panel" id="controls">
+      <h2>Options</h2>
+      <div class="ctl-grid">
+
+        <fieldset>
+          <legend>What to do</legend>
+          <div class="seg" id="modeSeg">
+            <label><input type="radio" name="mode" value="resize"><span>Resize</span></label>
+            <label><input type="radio" name="mode" value="compress"><span>Compress</span></label>
+            <label><input type="radio" name="mode" value="both" checked><span>Both</span></label>
+          </div>
+        </fieldset>
+
+        <fieldset id="resizeBox">
+          <legend>Resize by</legend>
+          <div class="seg" id="resizeSeg" style="margin-bottom:10px">
+            <label><input type="radio" name="rmode" value="maxdim" checked><span>Max dimension</span></label>
+            <label><input type="radio" name="rmode" value="percent"><span>Percentage</span></label>
+          </div>
+          <div class="row" id="maxdimRow">
+            <input type="number" id="maxdim" min="64" max="10000" step="16" value="1600">
+            <span class="val" style="text-align:left">px longest side</span>
+          </div>
+          <div class="row" id="percentRow" hidden>
+            <input type="range" id="percent" min="10" max="100" step="5" value="50">
+            <span class="val" id="percentVal">50%</span>
+          </div>
+        </fieldset>
+
+        <fieldset id="qualityBox">
+          <legend>JPEG / WebP quality</legend>
+          <div class="row">
+            <input type="range" id="quality" min="30" max="95" step="1" value="75">
+            <span class="val" id="qualityVal">75</span>
+          </div>
+          <span class="hint" style="color:var(--ink-faint);font-size:12px">Lower is smaller. 75 is a good default.</span>
+        </fieldset>
+
+        <fieldset>
+          <legend>Extras</legend>
+          <label class="check" style="margin-bottom:12px">
+            <input type="checkbox" id="topng">
+            <span>Convert opaque PNG/BMP to JPEG
+              <span class="hint">Usually the biggest win on screenshot-heavy files. Rewrites part names, relationships and content types. Images with any transparency are never converted.</span>
+            </span>
+          </label>
+          <span class="lbl">Output suffix</span>
+          <input type="text" id="suffix" value="-compressed" spellcheck="false">
+        </fieldset>
+
+      </div>
+    </section>
+
+    <div id="resultbar">
+      <div class="headline" id="headline">Calculating…</div>
+      <div class="grow"></div>
+      <progress id="prog" hidden></progress>
+      <span class="val" id="progText" hidden></span>
+      <button id="save" disabled>Save compressed file</button>
+    </div>
+
+    <div id="warn" class="msg warn" hidden></div>
+
+    <section class="panel">
+      <h2>Images</h2>
+      <div class="tablewrap">
+        <table id="tbl">
+          <thead><tr>
+            <th>Part</th><th>Format</th><th>Pixels</th>
+            <th style="text-align:right">Original</th>
+            <th style="text-align:right">New</th>
+            <th style="text-align:right">Saved</th>
+            <th>Status</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="note" id="otherNote" hidden></p>
+    </section>
+
+    <p style="text-align:center"><button class="ghost" id="reset">Open a different file</button></p>
+  </main>
+
+  <footer>Runs entirely offline in your browser. Your file is never sent anywhere.</footer>
+</div>
+
+<script>
+"use strict";
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ZIP  —  minimal reader/writer built on the platform's own deflate.
+   No dependencies: DecompressionStream/CompressionStream('deflate-raw')
+   ship in Chrome 103+, Firefox 113+ and Safari 16.4+.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const SIG_LOCAL = 0x04034b50, SIG_CEN = 0x02014b50, SIG_EOCD = 0x06054b50;
+const utf8enc = new TextEncoder(), utf8dec = new TextDecoder();
+
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(buf) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+async function pipe(bytes, stream) {
+  const readable = new Blob([bytes]).stream().pipeThrough(stream);
+  return new Uint8Array(await new Response(readable).arrayBuffer());
+}
+const inflateRaw = b => pipe(b, new DecompressionStream('deflate-raw'));
+const deflateRaw = b => pipe(b, new CompressionStream('deflate-raw'));
+
+/**
+ * Parse a ZIP from its central directory. Sizes and offsets are read from the
+ * central directory rather than the local headers, so archives written with
+ * streaming data descriptors (general-purpose bit 3) parse correctly.
+ */
+function readZip(arrayBuffer) {
+  const dv = new DataView(arrayBuffer);
+  const u8 = new Uint8Array(arrayBuffer);
+  const u16 = o => dv.getUint16(o, true);
+  const u32 = o => dv.getUint32(o, true);
+
+  if (arrayBuffer.byteLength < 22) throw new Error('File is too small to be an Office file.');
+
+  let eocd = -1;
+  const floor = Math.max(0, arrayBuffer.byteLength - 22 - 0xFFFF);
+  for (let i = arrayBuffer.byteLength - 22; i >= floor; i--) {
+    if (u32(i) === SIG_EOCD) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('Not a ZIP container — Office files are ZIPs, so this is not an OpenXML file.');
+
+  const count = u16(eocd + 10);
+  let off = u32(eocd + 16);
+  if (off === 0xFFFFFFFF || count === 0xFFFF) throw new Error('ZIP64 archives are not supported.');
+
+  const entries = [];
+  for (let i = 0; i < count; i++) {
+    if (u32(off) !== SIG_CEN) throw new Error('Corrupt ZIP central directory.');
+    const nameLen = u16(off + 28), extraLen = u16(off + 30), commentLen = u16(off + 32);
+    entries.push({
+      name: utf8dec.decode(u8.subarray(off + 46, off + 46 + nameLen)),
+      method: u16(off + 10),
+      modTime: u16(off + 12),
+      modDate: u16(off + 14),
+      crc: u32(off + 16),
+      compSize: u32(off + 20),
+      size: u32(off + 24),
+      localOff: u32(off + 42),
+    });
+    off += 46 + nameLen + extraLen + commentLen;
+  }
+
+  // The local header's extra field often differs in length from the central
+  // one, so the data offset has to come from the local header itself.
+  for (const e of entries) {
+    if (u32(e.localOff) !== SIG_LOCAL) throw new Error('Corrupt ZIP entry: ' + e.name);
+    e.dataOff = e.localOff + 30 + u16(e.localOff + 26) + u16(e.localOff + 28);
+    e.raw = u8.subarray(e.dataOff, e.dataOff + e.compSize);
+  }
+  return entries;
+}
+
+async function entryBytes(e) {
+  if (e.method === 0) return e.raw;
+  if (e.method === 8) return inflateRaw(e.raw);
+  throw new Error(`Unsupported compression method ${e.method} in ${e.name}`);
+}
+
+/**
+ * Build a ZIP. `files` is [{name, data:Uint8Array, modTime?, modDate?}].
+ * Each entry is deflated, but falls back to stored when deflate makes it
+ * bigger (already-compressed images, mostly).
+ */
+async function writeZip(files) {
+  const parts = [], central = [];
+  let offset = 0;
+
+  for (const f of files) {
+    const nameBytes = utf8enc.encode(f.name);
+    const flags = nameBytes.some(b => b > 0x7F) ? 0x0800 : 0;
+    const crc = crc32(f.data);
+
+    let method = 8, payload = await deflateRaw(f.data);
+    if (payload.length >= f.data.length) { method = 0; payload = f.data; }
+
+    const local = new Uint8Array(30 + nameBytes.length);
+    const ldv = new DataView(local.buffer);
+    ldv.setUint32(0, SIG_LOCAL, true);
+    ldv.setUint16(4, 20, true);            // version needed
+    ldv.setUint16(6, flags, true);
+    ldv.setUint16(8, method, true);
+    ldv.setUint16(10, f.modTime ?? 0, true);
+    ldv.setUint16(12, f.modDate ?? 0x21, true);   // 1980-01-01 when unknown
+    ldv.setUint32(14, crc, true);
+    ldv.setUint32(18, payload.length, true);
+    ldv.setUint32(22, f.data.length, true);
+    ldv.setUint16(26, nameBytes.length, true);
+    ldv.setUint16(28, 0, true);
+    local.set(nameBytes, 30);
+
+    parts.push(local, payload);
+
+    const cen = new Uint8Array(46 + nameBytes.length);
+    const cdv = new DataView(cen.buffer);
+    cdv.setUint32(0, SIG_CEN, true);
+    cdv.setUint16(4, 20, true);            // version made by
+    cdv.setUint16(6, 20, true);            // version needed
+    cdv.setUint16(8, flags, true);
+    cdv.setUint16(10, method, true);
+    cdv.setUint16(12, f.modTime ?? 0, true);
+    cdv.setUint16(14, f.modDate ?? 0x21, true);
+    cdv.setUint32(16, crc, true);
+    cdv.setUint32(20, payload.length, true);
+    cdv.setUint32(24, f.data.length, true);
+    cdv.setUint16(28, nameBytes.length, true);
+    cdv.setUint32(42, offset, true);       // relative offset of local header
+    cen.set(nameBytes, 46);
+    central.push(cen);
+
+    offset += local.length + payload.length;
+  }
+
+  const cdSize = central.reduce((n, c) => n + c.length, 0);
+  const eocd = new Uint8Array(22);
+  const edv = new DataView(eocd.buffer);
+  edv.setUint32(0, SIG_EOCD, true);
+  edv.setUint16(8, central.length, true);
+  edv.setUint16(10, central.length, true);
+  edv.setUint32(12, cdSize, true);
+  edv.setUint32(16, offset, true);
+
+  return new Blob([...parts, ...central, eocd], { type: 'application/zip' });
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   OOXML  —  locating media, and keeping the package consistent when an
+   image part has to be renamed (PNG/BMP → JPEG).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const MEDIA_RE = /(^|\/)media\//i;
+const RELS_RE  = /(^|\/)_rels\/[^/]+\.rels$/i;
+
+// Formats the browser can decode AND re-encode in place.
+const RECODE = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+// Decodable, but only useful if we are allowed to change the format.
+const CONVERT_ONLY = { bmp: 'image/bmp' };
+// Recognised as images, but passed through byte-for-byte.
+const PASSTHROUGH = {
+  gif: 'animation would be lost', tif: 'browser cannot encode TIFF', tiff: 'browser cannot encode TIFF',
+  emf: 'vector metafile', wmf: 'vector metafile', svg: 'vector image', ico: 'icon',
+};
+const NON_IMAGE = ['mp4','m4v','mov','avi','wmv','mp3','wav','wma','m4a','mkv','webm'];
+
+const extOf = n => (n.split('.').pop() || '').toLowerCase();
+const baseOf = n => n.slice(0, n.lastIndexOf('.'));
+const dirOf  = n => n.slice(0, n.lastIndexOf('/') + 1);
+
+/** Resolve a relationship Target against the directory of its owning part. */
+function resolvePart(baseDir, target) {
+  if (target.startsWith('/')) return target.slice(1);
+  const out = [];
+  for (const seg of (baseDir + target).split('/')) {
+    if (seg === '' || seg === '.') continue;
+    if (seg === '..') out.pop(); else out.push(seg);
+  }
+  return out.join('/');
+}
+
+/** `word/_rels/document.xml.rels` → `word/` ; `_rels/.rels` → `` */
+function relsBaseDir(relsPath) {
+  return relsPath.replace(/_rels\/[^/]+$/, '');
+}
+
+const escapeRe = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Rewrite every `Target` in a .rels file that points at a renamed part.
+ * We use the XML parser only to work out *which* target strings changed, then
+ * patch the original text, so the rest of the file survives byte-for-byte.
+ */
+function rewriteRels(text, relsPath, renames) {
+  const doc = new DOMParser().parseFromString(text, 'application/xml');
+  if (doc.querySelector('parsererror')) return text;   // leave anything odd alone
+
+  const base = relsBaseDir(relsPath);
+  const swaps = new Map();
+  for (const rel of doc.getElementsByTagName('Relationship')) {
+    if ((rel.getAttribute('TargetMode') || '') === 'External') continue;
+    const target = rel.getAttribute('Target');
+    if (!target || swaps.has(target)) continue;
+    const newPart = renames.get(resolvePart(base, target));
+    if (newPart) {
+      // Only the final segment changes, so splicing it keeps the ../ prefix.
+      swaps.set(target, target.replace(/[^/]+$/, newPart.slice(newPart.lastIndexOf('/') + 1)));
+    }
+  }
+
+  let out = text;
+  for (const [from, to] of swaps) {
+    out = out.replace(new RegExp(`Target="${escapeRe(from)}"`, 'g'), `Target="${to}"`)
+             .replace(new RegExp(`Target='${escapeRe(from)}'`, 'g'), `Target='${to}'`);
+  }
+  return out;
+}
+
+/** Make sure [Content_Types].xml knows about jpeg, and follow any renamed Overrides. */
+function rewriteContentTypes(text, renames) {
+  let out = text;
+  for (const [from, to] of renames) {
+    out = out.replace(new RegExp(`PartName="/${escapeRe(from)}"`, 'g'), `PartName="/${to}"`);
+  }
+  if (!/<Default\s+[^>]*Extension="jpeg"/i.test(out)) {
+    out = out.replace(/<\/Types>\s*$/i,
+      '<Default Extension="jpeg" ContentType="image/jpeg"/></Types>');
+  }
+  return out;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   IMAGES
+   ══════════════════════════════════════════════════════════════════════════ */
+
+function makeCanvas(w, h) {
+  if (typeof OffscreenCanvas === 'function') return new OffscreenCanvas(w, h);
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return c;
+}
+
+function canvasToBlob(canvas, type, quality) {
+  if (canvas.convertToBlob) return canvas.convertToBlob({ type, quality });
+  return new Promise((res, rej) =>
+    canvas.toBlob(b => b ? res(b) : rej(new Error('encode failed')), type, quality));
+}
+
+/**
+ * Cheap opacity test from the PNG header. Colour types 0/2/3 carry no alpha
+ * channel, so absent a tRNS chunk they are opaque; 4/6 need a real pixel scan.
+ */
+function pngOpacityFromHeader(bytes) {
+  if (bytes.length < 26) return 'unknown';
+  const colorType = bytes[25];
+  for (let p = 8; p + 8 <= bytes.length;) {
+    const len = ((bytes[p] << 24) | (bytes[p + 1] << 16) | (bytes[p + 2] << 8) | bytes[p + 3]) >>> 0;
+    const type = String.fromCharCode(bytes[p + 4], bytes[p + 5], bytes[p + 6], bytes[p + 7]);
+    if (type === 'tRNS') return 'transparent';
+    if (type === 'IDAT' || type === 'IEND') break;
+    p += 12 + len;
+  }
+  return (colorType === 0 || colorType === 2 || colorType === 3) ? 'opaque' : 'unknown';
+}
+
+/** Full alpha scan, done in horizontal strips so memory stays bounded. */
+function hasTransparency(bitmap) {
+  const W = bitmap.width, H = bitmap.height;
+  const stripH = Math.max(1, Math.min(H, Math.floor(2e6 / W)));
+  const canvas = makeCanvas(W, stripH);
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  for (let y = 0; y < H; y += stripH) {
+    const h = Math.min(stripH, H - y);
+    ctx.clearRect(0, 0, W, stripH);
+    ctx.drawImage(bitmap, 0, -y);
+    const data = ctx.getImageData(0, 0, W, h).data;
+    for (let i = 3; i < data.length; i += 4) if (data[i] !== 255) return true;
+  }
+  return false;
+}
+
+function targetSize(w, h, opts) {
+  if (!opts.resize) return { w, h };
+  if (opts.rmode === 'percent') {
+    const s = opts.percent / 100;
+    return { w: Math.max(1, Math.round(w * s)), h: Math.max(1, Math.round(h * s)) };
+  }
+  const longest = Math.max(w, h);
+  if (longest <= opts.maxdim) return { w, h };
+  const s = opts.maxdim / longest;
+  return { w: Math.max(1, Math.round(w * s)), h: Math.max(1, Math.round(h * s)) };
+}
+
+/**
+ * Re-encode one image part. Never returns something larger than it was given:
+ * if the new bytes don't win, the original is kept. Canvas PNG encoding in
+ * particular inflates files fairly often.
+ */
+async function processImage(img, opts) {
+  const { ext, bytes } = img;
+  // Compare against the bytes the part actually occupies in the ZIP, so the
+  // "never make it bigger" guard matches the effect on the file size.
+  const occupies = img.stored ?? bytes.length;
+  const recodable = ext in RECODE;
+  const convertible = (ext === 'png' || ext in CONVERT_ONLY) && opts.toJpeg;
+
+  if (!recodable && !convertible) return { status: 'skipped', reason: PASSTHROUGH[ext] || 'unsupported format' };
+
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(new Blob([bytes], { type: RECODE[ext] || CONVERT_ONLY[ext] }),
+                                     { imageOrientation: 'from-image' });
+  } catch {
+    return { status: 'skipped', reason: 'could not be decoded' };
+  }
+
+  try {
+    const { w, h } = targetSize(bitmap.width, bitmap.height, opts);
+    const resized = w !== bitmap.width || h !== bitmap.height;
+
+    // Decide the output format.
+    let type = RECODE[ext] || 'image/jpeg', rename = false, keptAlpha = false;
+    if (convertible) {
+      let opaque = ext === 'bmp';                       // BMP alpha is effectively unused
+      if (!opaque) {
+        const hint = pngOpacityFromHeader(bytes);
+        opaque = hint === 'opaque' || (hint === 'unknown' && !hasTransparency(bitmap));
+      }
+      if (opaque) { type = 'image/jpeg'; rename = true; }
+      else if (recodable) keptAlpha = true;                 // stays a PNG
+      else return { status: 'skipped', reason: 'has transparency' };
+    }
+
+    const lossy = type === 'image/jpeg' || type === 'image/webp';
+    // "Resize only" still has to re-encode, so it does so at near-original quality.
+    const quality = lossy ? (opts.compress ? opts.quality / 100 : 0.92) : undefined;
+
+    if (!resized && !opts.compress && !rename) return { status: 'unchanged', width: w, height: h, keptAlpha };
+
+    const canvas = makeCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+    if (type === 'image/jpeg') { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); }
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(bitmap, 0, 0, w, h);
+
+    const blob = await canvasToBlob(canvas, type, quality);
+    if (blob.type !== type) return { status: 'skipped', reason: 'browser cannot encode ' + type };
+    if (blob.size >= occupies)
+      return { status: 'kept', reason: 'no saving', width: bitmap.width, height: bitmap.height, keptAlpha };
+
+    return {
+      status: rename ? 'converted' : 'recoded',
+      data: new Uint8Array(await blob.arrayBuffer()),
+      width: w, height: h, rename, resized, keptAlpha,
+    };
+  } finally {
+    bitmap.close?.();
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Dimension sniffing — reads pixel sizes straight out of the file headers so
+   the report appears instantly, without decoding every image first.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+function sniffSize(b, ext) {
+  const be32 = o => ((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]) >>> 0;
+  const le16 = o => b[o] | (b[o + 1] << 8);
+  const le32 = o => (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) | 0;
+  try {
+    if (ext === 'png' && b.length > 24) return { w: be32(16), h: be32(20) };
+    if (ext === 'gif' && b.length > 10) return { w: le16(6), h: le16(8) };
+    if (ext === 'bmp' && b.length > 26) return { w: Math.abs(le32(18)), h: Math.abs(le32(22)) };
+    if (ext === 'webp' && b.length > 30 && String.fromCharCode(b[12], b[13], b[14]) === 'VP8') {
+      if (b[15] === 'X'.charCodeAt(0))
+        return { w: (b[24] | (b[25] << 8) | (b[26] << 16)) + 1, h: (b[27] | (b[28] << 8) | (b[29] << 16)) + 1 };
+      if (b[15] === 0x20) return { w: le16(26) & 0x3FFF, h: le16(28) & 0x3FFF };
+    }
+    if (ext === 'jpg' || ext === 'jpeg') {
+      for (let p = 2; p + 9 < b.length;) {
+        if (b[p] !== 0xFF) { p++; continue; }
+        const m = b[p + 1];
+        if (m === 0xD8 || m === 0x01 || (m >= 0xD0 && m <= 0xD7)) { p += 2; continue; }
+        if (m >= 0xC0 && m <= 0xCF && m !== 0xC4 && m !== 0xC8 && m !== 0xCC)
+          return { w: (b[p + 7] << 8) | b[p + 8], h: (b[p + 5] << 8) | b[p + 6] };
+        p += 2 + ((b[p + 2] << 8) | b[p + 3]);
+      }
+    }
+  } catch { /* fall through */ }
+  return null;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   APP
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const $ = id => document.getElementById(id);
+const state = { file: null, entries: null, images: [], other: [], results: new Map(), runId: 0, estimates: 0 };
+
+const KB = 1024, MB = KB * 1024;
+function fmtBytes(n) {
+  if (n < KB) return n + ' B';
+  if (n < MB) return (n / KB).toFixed(n < 10 * KB ? 1 : 0) + ' KB';
+  return (n / MB).toFixed(n < 10 * MB ? 2 : 1) + ' MB';
+}
+const pct = (part, whole) => whole > 0 ? Math.round(part / whole * 100) : 0;
+
+function setMessage(text, kind) {
+  const el = $('msg');
+  el.hidden = !text;
+  el.textContent = text || '';
+  el.className = 'msg' + (kind ? ' ' + kind : '');
+}
+
+/* ---------- loading ---------- */
+
+async function loadFile(file) {
+  setMessage('');
+  state.file = file;
+  try {
+    const buf = await file.arrayBuffer();
+    state.entries = readZip(buf);
+  } catch (err) {
+    $('report').hidden = true;
+    setMessage(err.message, 'error');
+    return;
+  }
+
+  const known = new Set([...Object.keys(RECODE), ...Object.keys(CONVERT_ONLY), ...Object.keys(PASSTHROUGH)]);
+  const media = state.entries.filter(e => MEDIA_RE.test(e.name) && !e.name.endsWith('/'));
+  state.images = [];
+  state.other = [];
+
+  for (const e of media) {
+    const ext = extOf(e.name);
+    if (known.has(ext)) state.images.push({ entry: e, name: e.name, ext, size: e.size, stored: e.compSize });
+    else state.other.push({ name: e.name, ext, size: e.size });
+  }
+
+  for (const img of state.images) {
+    img.bytes = await entryBytes(img.entry);
+    const dim = sniffSize(img.bytes, img.ext);
+    img.w = dim?.w; img.h = dim?.h;
+  }
+  state.images.sort((a, b) => b.stored - a.stored);
+
+  renderSummary();
+  const hasImages = state.images.length > 0;
+  $('report').hidden = false;
+  $('resultbar').hidden = $('tbl').parentElement.hidden = $('controls').hidden = !hasImages;
+  $('warn').hidden = true;
+  if (hasImages) scheduleEstimate(0);
+}
+
+function renderSummary() {
+  const total = state.file.size;
+  const imgBytes = state.images.reduce((n, i) => n + i.stored, 0);
+  const folders = [...new Set(state.images.concat(state.other).map(i => dirOf(i.name)))];
+
+  $('fname').textContent = state.file.name;
+  $('stats').innerHTML = [
+    ['Total file size', fmtBytes(total), ''],
+    ['Images in media', String(state.images.length), state.other.length ? `+ ${state.other.length} media file(s)` : ''],
+    ['Image data', fmtBytes(imgBytes), `${pct(imgBytes, total)}% of the file`],
+    ['Largest image', state.images.length ? fmtBytes(state.images[0].stored) : '—',
+      state.images.length ? state.images[0].name.split('/').pop() : ''],
+  ].map(([k, v, n]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div><div class="n">${n}</div></div>`).join('');
+
+  $('mediaNote').textContent = state.images.length
+    ? `Media folder: ${folders.join(', ')}`
+    : 'This file has no media folder, so there are no images to compress.';
+
+  $('otherNote').hidden = !state.other.length;
+  if (state.other.length) {
+    $('otherNote').textContent = 'Not touched (audio/video): ' +
+      state.other.map(o => `${o.name.split('/').pop()} (${fmtBytes(o.size)})`).join(', ');
+  }
+}
+
+/* ---------- options ---------- */
+
+function readOpts() {
+  const mode = document.querySelector('input[name=mode]:checked').value;
+  return {
+    resize: mode === 'resize' || mode === 'both',
+    compress: mode === 'compress' || mode === 'both',
+    rmode: document.querySelector('input[name=rmode]:checked').value,
+    maxdim: Math.max(16, Number($('maxdim').value) || 1600),
+    percent: Number($('percent').value),
+    quality: Number($('quality').value),
+    toJpeg: $('topng').checked,
+  };
+}
+
+function syncControls() {
+  const o = readOpts();
+  $('resizeBox').classList.toggle('disabled', !o.resize);
+  $('qualityBox').classList.toggle('disabled', !o.compress);
+  $('maxdimRow').hidden = o.rmode !== 'maxdim';
+  $('percentRow').hidden = o.rmode !== 'percent';
+  $('percentVal').textContent = o.percent + '%';
+  $('qualityVal').textContent = o.quality;
+}
+
+/* ---------- estimating ---------- */
+
+let estimateTimer = null;
+function scheduleEstimate(delay = 350) {
+  state.runId++;                       // cancel anything in flight
+  $('save').disabled = true;
+  clearTimeout(estimateTimer);
+  estimateTimer = setTimeout(runEstimate, delay);
+}
+
+async function runEstimate() {
+  const id = ++state.runId;
+  const opts = readOpts();
+  const results = new Map();
+  const n = state.images.length;
+
+  $('prog').hidden = $('progText').hidden = false;
+  $('prog').max = n;
+  $('headline').textContent = 'Calculating…';
+
+  for (let i = 0; i < n; i++) {
+    if (id !== state.runId) return;
+    const img = state.images[i];
+    let r;
+    try {
+      r = await processImage(img, opts);
+    } catch (err) {
+      r = { status: 'skipped', reason: err.message };
+    }
+    results.set(img.name, r);
+    $('prog').value = i + 1;
+    $('progText').textContent = `${i + 1}/${n}`;
+    if (i % 3 === 2) await new Promise(r => setTimeout(r, 0));
+  }
+  if (id !== state.runId) return;
+
+  state.results = results;
+  state.estimates++;
+  $('prog').hidden = $('progText').hidden = true;
+  renderResults();
+  $('save').disabled = false;
+}
+
+function newSizeOf(img) {
+  const r = state.results.get(img.name);
+  return r?.data ? r.data.length : img.stored;
+}
+
+function estimatedFileSize() {
+  let size = state.file.size;
+  for (const img of state.images) {
+    const r = state.results.get(img.name);
+    if (r?.data) size += r.data.length - img.stored;
+  }
+  return size;
+}
+
+function renderResults() {
+  const before = state.file.size, after = estimatedFileSize();
+  const saved = before - after;
+
+  $('headline').innerHTML = saved > 0
+    ? `<b>${fmtBytes(after)}</b> &nbsp;<span style="color:var(--ink-dim)">from ${fmtBytes(before)}</span> &nbsp;
+       <span class="savings">− ${fmtBytes(saved)} (${pct(saved, before)}%)</span>`
+    : `<b>${fmtBytes(before)}</b> <span class="savings none">— these settings save nothing</span>`;
+
+  const rows = state.images.map(img => {
+    const r = state.results.get(img.name) || {};
+    const nsize = newSizeOf(img);
+    const delta = img.stored - nsize;
+    const dims = img.w ? `${img.w}×${img.h}` : '—';
+    const newDims = r.data && (r.width !== img.w || r.height !== img.h) ? ` → ${r.width}×${r.height}` : '';
+    const label = {
+      converted: '<span class="pill conv">→ JPEG</span>',
+      recoded: '<span class="pill ok">recompressed</span>',
+      unchanged: '<span class="pill">unchanged</span>',
+      kept: '<span class="pill">kept — no saving</span>',
+      skipped: `<span class="pill">skipped — ${r.reason || ''}</span>`,
+    }[r.status] || '<span class="pill">—</span>';
+    return `<tr>
+      <td class="part" title="${img.name}">${img.name}</td>
+      <td>${img.ext.toUpperCase()}</td>
+      <td>${dims}${newDims}</td>
+      <td class="num">${fmtBytes(img.stored)}</td>
+      <td class="num">${fmtBytes(nsize)}</td>
+      <td class="num delta${delta > 0 ? '' : ' zero'}">${delta > 0 ? '−' + fmtBytes(delta) : '—'}</td>
+      <td>${label}</td>
+    </tr>`;
+  });
+  $('tbl').tBodies[0].innerHTML = rows.join('');
+
+  const transparent = state.images.filter(i => state.results.get(i.name)?.keptAlpha).length;
+  const warn = $('warn');
+  if (saved <= 0) {
+    warn.hidden = false;
+    warn.textContent = state.results.size && [...state.results.values()].every(r => r.status === 'unchanged')
+      ? 'Nothing to do: every image is already at or below the target size. Lower the limit, or switch on compression.'
+      : 'These settings produce no saving. Try a lower quality, a smaller maximum dimension, or the PNG→JPEG option.';
+  } else if (transparent) {
+    warn.hidden = false;
+    warn.textContent = `${transparent} PNG${transparent > 1 ? 's were' : ' was'} left alone because ${transparent > 1 ? 'they have' : 'it has'} transparency — converting would have put a white box behind ${transparent > 1 ? 'them' : 'it'}.`;
+  } else {
+    warn.hidden = true;
+  }
+}
+
+/* ---------- rebuilding the file ---------- */
+
+/** Pick a free `.jpeg` name for a converted part. */
+function jpegNameFor(name, taken) {
+  const stem = dirOf(name) + baseOf(name).split('/').pop();
+  let candidate = stem + '.jpeg';
+  for (let i = 2; taken.has(candidate); i++) candidate = `${stem}_${i}.jpeg`;
+  taken.add(candidate);
+  return candidate;
+}
+
+async function buildFile() {
+  const CT = '[Content_Types].xml';
+  const taken = new Set(state.entries.map(e => e.name));
+
+  const renames = new Map();
+  for (const img of state.images) {
+    const r = state.results.get(img.name);
+    if (r?.rename) renames.set(img.name, jpegNameFor(img.name, taken));
+  }
+
+  const ct = state.entries.find(e => e.name === CT);
+  if (renames.size && !ct) throw new Error('This package has no [Content_Types].xml, so parts cannot be renamed.');
+
+  // [Content_Types].xml must come first in the package; everything else keeps
+  // its original order.
+  const ordered = ct ? [ct, ...state.entries.filter(e => e !== ct)] : state.entries.slice();
+
+  const files = [];
+  for (const e of ordered) {
+    if (e.name.endsWith('/')) {
+      files.push({ name: e.name, data: new Uint8Array(0), modTime: e.modTime, modDate: e.modDate });
+      continue;
+    }
+    const r = state.results.get(e.name);
+    let data = r?.data ?? await entryBytes(e);
+
+    if (renames.size) {
+      if (e.name === CT) data = utf8enc.encode(rewriteContentTypes(utf8dec.decode(data), renames));
+      else if (RELS_RE.test(e.name)) data = utf8enc.encode(rewriteRels(utf8dec.decode(data), e.name, renames));
+    }
+    files.push({ name: renames.get(e.name) ?? e.name, data, modTime: e.modTime, modDate: e.modDate });
+  }
+  return writeZip(files);
+}
+
+async function save() {
+  const btn = $('save');
+  btn.disabled = true;
+  btn.textContent = 'Building…';
+  try {
+    const blob = await buildFile();
+    const ext = extOf(state.file.name);
+    const suffix = $('suffix').value || '-compressed';
+    const name = baseOf(state.file.name) + suffix + '.' + ext;
+
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement('a'), { href: url, download: name });
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+
+    const saved = state.file.size - blob.size;
+    setMessage(saved > 0
+      ? `Saved ${name} — ${fmtBytes(blob.size)}, down from ${fmtBytes(state.file.size)} (${pct(saved, state.file.size)}% smaller).`
+      : `Saved ${name} — ${fmtBytes(blob.size)}. That is no smaller than the original.`,
+      saved > 0 ? '' : 'warn');
+  } catch (err) {
+    setMessage('Could not build the file: ' + err.message, 'error');
+  } finally {
+    btn.textContent = 'Save compressed file';
+    btn.disabled = false;
+  }
+}
+
+/* ---------- events ---------- */
+
+const drop = $('drop');
+drop.addEventListener('click', () => $('file').click());
+drop.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); }
+});
+$('file').addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+
+for (const type of ['dragenter', 'dragover']) {
+  drop.addEventListener(type, e => { e.preventDefault(); drop.classList.add('over'); });
+}
+for (const type of ['dragleave', 'drop']) {
+  drop.addEventListener(type, e => { e.preventDefault(); drop.classList.remove('over'); });
+}
+drop.addEventListener('drop', e => {
+  const file = e.dataTransfer?.files?.[0];
+  if (file) loadFile(file);
+});
+
+$('controls').addEventListener('input', () => { syncControls(); scheduleEstimate(); });
+$('save').addEventListener('click', save);
+$('reset').addEventListener('click', () => {
+  state.runId++;
+  $('report').hidden = true;
+  $('file').value = '';
+  setMessage('');
+  window.scrollTo({ top: 0 });
+});
+
+syncControls();
+
+// Small hook so the end-to-end tests can drive the page without a real drop event.
+window.__oxic = { loadFile, buildFile, state };
+</script>
+</body>
+</html>
