@@ -1,3 +1,16 @@
+# OXIC
+
+Two single-page tools for making photo-heavy files smaller. Neither has any
+dependencies, build step or server: open the `.html` file in a browser and it
+runs, and nothing you drop into either one leaves your machine.
+
+| | |
+|---|---|
+| [`index.html`](index.html) | **OpenXML Image Compressor** — resize and recompress the images inside `.xlsx`/`.docx`/`.pptx` |
+| [`motionphoto.html`](motionphoto.html) | **Motion Photo Stripper** — drop the video clip out of Samsung/Pixel motion photos |
+
+---
+
 # OXIC — OpenXML Image Compressor
 
 A single-page web app that opens an Office file (`.xlsx`, `.docx`, `.pptx`), shows how much of
@@ -100,3 +113,80 @@ both resize modes, each of the three actions, the PNG→JPEG rename propagating 
 relationships and content types, transparent and unbeatable PNGs being left alone, a file with
 no images, a file that is not a ZIP, and re-processing an output without corrupting or growing
 it.
+
+
+---
+
+# MPS — Motion Photo Stripper
+
+`motionphoto.html`. A Samsung or Pixel motion photo is an ordinary JPEG with a
+video clip glued onto the end. This finds where the still image really stops
+and drops everything after it, in a batch.
+
+![MPS](docs/screenshot-motionphoto.png)
+
+Drop one file or a whole folder. It reports what each file contains and how
+many bytes the clip is, then hands back a single `.jpg` or, for a batch, one
+ZIP of stills.
+
+## How the cut is decided
+
+By walking the JPEG's own marker structure to its EOI — **not** by searching
+for the `FFD9` byte pair, and not by parsing any vendor's trailer format.
+
+Searching for `FFD9` is the obvious approach and it is badly wrong: an EXIF
+thumbnail is itself a JPEG, carrying its own `FFD9` inside an APP1 segment.
+In this project's own fixtures the first `FFD9` appears at byte 9,792 while
+the still actually ends at byte 256,380 — a naive search would throw away 96%
+of the photo.
+
+Deciding the cut from the JPEG structure rather than from a vendor signature
+also means an unrecognised trailer is still removed correctly. Samsung's
+`MotionPhoto_Data` and SEF markers, and MP4's `ftyp`, are detected and
+reported, but nothing depends on them.
+
+## What is preserved
+
+The still is **byte-identical** to the JPEG the phone embedded. Nothing is
+decoded or re-encoded, so there is no generation loss, and EXIF — dates, GPS,
+camera settings, orientation — comes through untouched because it sits in
+front of the image data, not after it.
+
+Re-encoding tools (Windows PowerToys Image Resizer, for one) also drop the
+clip, as a side effect of only ever reading the JPEG portion. Truncation gets
+to the same place without recompressing the photo.
+
+The one optional edit is **clearing motion-photo flags in XMP**: with the clip
+gone, a leftover `GCamera:MotionPhoto="1"` is untrue and can make a gallery
+show a play button for a video that no longer exists. Only the flag's value
+byte changes, so segment lengths stay valid. `MotionPhotoVersion` and other
+non-boolean fields are left alone. Turn it off to get a pure truncation.
+
+## Tests
+
+```sh
+node test/make-mp-fixtures.mjs   # build test/fixtures/mp/
+node test/mp-e2e.mjs             # drive motionphoto.html in real Chromium
+python3 test/validate_jpeg.py <file.jpg>   # does this JPEG end at its EOI?
+```
+
+The fixtures embed a real EXIF thumbnail, so the `FFD9` trap above is exercised
+on every run. Each fixture is built by concatenating a known still with a known
+trailer, and the suite asserts the output is byte-identical to that still —
+the strongest available check that the cut lands in exactly the right place.
+`validate_jpeg.py` is a second, independent implementation of the marker walk
+in Python, and the suite confirms it *rejects* the untouched inputs as well as
+accepting the outputs.
+
+### Known limits
+
+- **Not tested against a real Samsung file.** No phone was involved: the
+  fixtures are constructed. The cut is standards-based rather than a guess at
+  Samsung's layout, which is exactly why it should hold — but that is
+  reasoning, not evidence. Try it on a real motion photo before trusting it
+  with your camera roll.
+- The SEF trailer in the fixtures is an **approximation** of Samsung's real
+  layout, present only so signature detection has something to find. Nothing
+  parses it.
+- Progressive JPEGs are handled by design (multiple SOS segments) but are not
+  in the fixture set, because the tools available here only emit baseline JPEG.

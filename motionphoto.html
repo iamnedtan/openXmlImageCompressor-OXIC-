@@ -1,0 +1,608 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MPS — Motion Photo Stripper</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f7f9; --panel: #ffffff; --panel-2: #fbfbfd;
+    --ink: #16181d; --ink-dim: #5c626e; --ink-faint: #8a909c;
+    --line: #e3e5ea; --accent: #2f6fed; --accent-ink: #ffffff;
+    --good: #1a7f4f; --warn: #9a6200; --bad: #b3261e;
+    --radius: 10px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a; --panel: #1c1f25; --panel-2: #22262d;
+      --ink: #e9ebef; --ink-dim: #a3abb8; --ink-faint: #7b8391;
+      --line: #2f343d; --accent: #5b8dff; --accent-ink: #0d1016;
+      --good: #4ec98a; --warn: #e0a33c; --bad: #ff6b60;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 14px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 28px 20px 80px;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; }
+  header { margin-bottom: 22px; }
+  h1 { font-size: 21px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h1 .tag {
+    font: 600 11px/1 var(--mono); letter-spacing: 0.08em;
+    background: var(--accent); color: var(--accent-ink);
+    padding: 4px 6px; border-radius: 5px; vertical-align: 3px; margin-right: 8px;
+  }
+  .sub { color: var(--ink-dim); margin: 0; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 18px; margin-bottom: 18px;
+  }
+  .panel > h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em;
+    color: var(--ink-faint); margin: 0 0 14px; font-weight: 600;
+  }
+  #drop {
+    border: 2px dashed var(--line); border-radius: var(--radius);
+    padding: 40px 20px; text-align: center; cursor: pointer;
+    background: var(--panel); transition: border-color .15s, background .15s;
+  }
+  #drop:hover, #drop.over { border-color: var(--accent); background: var(--panel-2); }
+  #drop.over { border-style: solid; }
+  #drop .big { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+  #drop .small { color: var(--ink-dim); font-size: 13px; }
+  #drop input { display: none; }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px;
+           background: var(--line); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .stat { background: var(--panel-2); padding: 12px 14px; }
+  .stat .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); }
+  .stat .v { font-size: 19px; font-weight: 650; margin-top: 3px; letter-spacing: -0.02em; }
+  .stat .n { font-size: 12px; color: var(--ink-dim); }
+
+  .ctl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 18px; }
+  .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+         color: var(--ink-faint); font-weight: 600; margin-bottom: 8px; display: block; }
+  input[type=text] {
+    background: var(--panel-2); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 7px; padding: 6px 9px; font: inherit; width: 100%;
+  }
+  .check { display: flex; gap: 9px; align-items: flex-start; cursor: pointer; }
+  .check input { accent-color: var(--accent); margin: 3px 0 0; flex: none; }
+  .check .hint { display: block; color: var(--ink-faint); font-size: 12px; margin-top: 2px; }
+
+  #resultbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 18px;
+    border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--panel-2); padding: 16px 18px; margin-bottom: 18px;
+  }
+  .headline { font-size: 15px; }
+  .headline b { font-size: 22px; letter-spacing: -0.02em; }
+  .savings { color: var(--good); font-weight: 650; }
+  .savings.none { color: var(--ink-dim); }
+  .grow { flex: 1 1 auto; }
+  button {
+    font: inherit; font-weight: 600; border: 1px solid transparent; border-radius: 8px;
+    padding: 9px 16px; cursor: pointer; background: var(--accent); color: var(--accent-ink);
+  }
+  button.ghost { background: transparent; color: var(--ink-dim); border-color: var(--line); font-weight: 500; }
+  button:disabled { opacity: .5; cursor: default; }
+  progress { width: 160px; height: 6px; accent-color: var(--accent); }
+
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 11px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { background: var(--panel-2); font-size: 11px; text-transform: uppercase;
+       letter-spacing: 0.05em; color: var(--ink-faint); }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.num { text-align: right; font-family: var(--mono); }
+  td.name { font-family: var(--mono); max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+  .pill { font-size: 11px; padding: 2px 7px; border-radius: 20px; background: var(--panel-2);
+          border: 1px solid var(--line); color: var(--ink-dim); }
+  .pill.ok { color: var(--good); border-color: currentColor; }
+  .pill.bad { color: var(--bad); border-color: currentColor; }
+  .delta { color: var(--good); }
+  .delta.zero { color: var(--ink-faint); }
+
+  .note { color: var(--ink-dim); font-size: 13px; margin: 12px 0 0; }
+  .msg { padding: 12px 14px; border-radius: 8px; border: 1px solid var(--line);
+         background: var(--panel-2); margin-bottom: 18px; }
+  .msg.error { border-color: var(--bad); color: var(--bad); }
+  .msg.warn { border-color: var(--warn); color: var(--warn); }
+  [hidden] { display: none !important; }
+  footer { color: var(--ink-faint); font-size: 12px; text-align: center; margin-top: 34px; }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1><span class="tag">MPS</span>Motion Photo Stripper</h1>
+    <p class="sub">Samsung and Pixel motion photos are an ordinary JPEG with a video clip glued onto the end. This finds where the still image really stops and drops everything after it. Runs entirely in your browser — nothing is uploaded.</p>
+  </header>
+
+  <div id="msg" class="msg" hidden></div>
+
+  <div id="drop" tabindex="0" role="button" aria-label="Choose JPEG files">
+    <div class="big">Drop motion photos here</div>
+    <div class="small">or click to choose &nbsp;·&nbsp; one file or a whole folder of them</div>
+    <input type="file" id="file" accept=".jpg,.jpeg,image/jpeg" multiple>
+  </div>
+
+  <main id="report" hidden>
+
+    <section class="panel">
+      <h2>Found</h2>
+      <div class="stats" id="stats"></div>
+      <p class="note" id="foundNote"></p>
+    </section>
+
+    <section class="panel" id="controls">
+      <h2>Options</h2>
+      <div class="ctl-grid">
+        <div>
+          <span class="lbl">Output suffix</span>
+          <input type="text" id="suffix" value="-still" spellcheck="false">
+          <span class="hint" style="color:var(--ink-faint);font-size:12px">Leave empty to keep the original filename.</span>
+        </div>
+        <div>
+          <span class="lbl">Metadata</span>
+          <label class="check">
+            <input type="checkbox" id="clearxmp" checked>
+            <span>Clear motion-photo flags in XMP
+              <span class="hint">Once the clip is gone, a leftover <code>MotionPhoto="1"</code> tag is simply untrue, and can make a gallery app show a play button for a video that no longer exists. Only the flag value is changed, so the segment length is untouched.</span>
+            </span>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <div id="resultbar">
+      <div class="headline" id="headline">Reading…</div>
+      <div class="grow"></div>
+      <progress id="prog" hidden></progress>
+      <span class="val" id="progText" hidden style="font-family:var(--mono);font-size:13px;color:var(--ink-dim)"></span>
+      <button id="save" disabled>Save stills</button>
+    </div>
+
+    <div id="warn" class="msg warn" hidden></div>
+
+    <section class="panel">
+      <h2>Files</h2>
+      <div class="tablewrap">
+        <table id="tbl">
+          <thead><tr>
+            <th>File</th><th>Contains</th>
+            <th style="text-align:right">Original</th>
+            <th style="text-align:right">Still</th>
+            <th style="text-align:right">Clip removed</th>
+            <th>Status</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <p style="text-align:center"><button class="ghost" id="reset">Choose different files</button></p>
+  </main>
+
+  <footer>Runs entirely offline in your browser. Your photos are never sent anywhere.</footer>
+</div>
+
+<script>
+"use strict";
+
+/* ══════════════════════════════════════════════════════════════════════════
+   JPEG  —  finding where the still image actually ends.
+
+   A motion photo is a complete JPEG with a video appended after it. The only
+   trustworthy way to find the join is to walk the JPEG's own marker structure
+   to its EOI. Searching for the FFD9 byte pair instead would cut the file
+   short at the first EXIF thumbnail, which is itself a JPEG and carries its
+   own FFD9 inside an APP1 segment.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const SOI = 0xD8, EOI = 0xD9, SOS = 0xDA, TEM = 0x01, APP1 = 0xE1;
+const isRst = m => m >= 0xD0 && m <= 0xD7;
+
+/**
+ * Walk the marker structure. Returns the offset one past the primary image's
+ * EOI, plus the segments seen along the way.
+ */
+function parseJpeg(bytes) {
+  if (bytes.length < 4 || bytes[0] !== 0xFF || bytes[1] !== SOI) {
+    throw new Error('Not a JPEG — the file does not start with an SOI marker.');
+  }
+  const segments = [];
+  let p = 2;
+
+  while (p < bytes.length) {
+    if (bytes[p] !== 0xFF) throw new Error(`Malformed JPEG: expected a marker at byte ${p}.`);
+    while (p < bytes.length && bytes[p] === 0xFF) p++;      // markers may be padded with FFs
+    if (p >= bytes.length) break;
+
+    const marker = bytes[p++];
+    if (marker === EOI) return { end: p, segments };
+    if (marker === TEM || isRst(marker)) continue;          // no payload
+
+    if (p + 2 > bytes.length) throw new Error('Truncated JPEG: segment header runs past the end.');
+    const len = (bytes[p] << 8) | bytes[p + 1];
+    if (len < 2) throw new Error(`Malformed JPEG: bad segment length at byte ${p}.`);
+    segments.push({ marker, start: p + 2, end: p + len });   // payload bounds
+    p += len;
+
+    if (marker === SOS) {
+      // Entropy-coded data follows, with FF00 as an escaped FF and restart
+      // markers interspersed. Scan to the next real marker.
+      while (p + 1 < bytes.length) {
+        if (bytes[p] === 0xFF && bytes[p + 1] !== 0x00 && !isRst(bytes[p + 1])) break;
+        p++;
+      }
+    }
+  }
+  throw new Error('Truncated JPEG: no EOI marker found.');
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Trailer identification — reported, never relied upon.
+
+   The cut is decided entirely by the JPEG structure above. These signatures
+   only describe what was found, so an unrecognised vendor format still gets
+   stripped correctly instead of being skipped.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const utf8enc = new TextEncoder(), utf8dec = new TextDecoder();
+
+/** Byte-level indexOf for an ASCII needle. */
+function findAscii(haystack, needle, from = 0) {
+  const pat = utf8enc.encode(needle);
+  outer: for (let i = from; i <= haystack.length - pat.length; i++) {
+    for (let j = 0; j < pat.length; j++) if (haystack[i + j] !== pat[j]) continue outer;
+    return i;
+  }
+  return -1;
+}
+
+const TRAILER_SIGNATURES = [
+  ['MotionPhoto_Data', 'Samsung motion photo'],
+  ['SEFH', 'Samsung trailer (SEF)'],
+  ['SEFT', 'Samsung trailer (SEF)'],
+];
+
+/** Describe an appended trailer without depending on any vendor's layout. */
+function describeTrailer(bytes, start) {
+  const tail = bytes.subarray(start);
+  const found = new Set();
+  for (const [needle, label] of TRAILER_SIGNATURES) {
+    if (findAscii(tail, needle) >= 0) found.add(label);
+  }
+  // Only as a fallback: "MotionPhoto" is a substring of "MotionPhoto_Data",
+  // so reporting both would name the same trailer twice.
+  if (!found.size && findAscii(tail, 'MotionPhoto') >= 0) found.add('motion photo marker');
+  // An MP4/QuickTime file begins with a box whose type is 'ftyp' at offset 4.
+  const ftyp = findAscii(tail, 'ftyp');
+  if (ftyp >= 4) found.add('MP4 video');
+  return { labels: [...found], videoAt: ftyp >= 4 ? start + ftyp - 4 : -1 };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   XMP  —  clearing motion-photo flags left behind by the removed clip.
+   Replacements are the same byte length, so segment lengths stay valid.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const XMP_NS = 'http://ns.adobe.com/xap/1.0/\0';
+const XMP_FLAGS = ['MotionPhoto', 'MicroVideo'];
+
+/**
+ * Flip `Flag="1"` to `Flag="0"` inside XMP APP1 segments only, so a stray
+ * matching string in image data can never be touched.
+ */
+function clearMotionFlags(bytes, segments) {
+  let changed = 0;
+  for (const seg of segments) {
+    if (seg.marker !== APP1) continue;
+    const head = utf8dec.decode(bytes.subarray(seg.start, seg.start + XMP_NS.length));
+    if (head !== XMP_NS) continue;
+
+    for (const flag of XMP_FLAGS) {
+      for (const quote of ['"', "'"]) {
+        const needle = `${flag}=${quote}1${quote}`;
+        for (let at = findAscii(bytes, needle, seg.start);
+             at >= 0 && at < seg.end;
+             at = findAscii(bytes, needle, at + 1)) {
+          bytes[at + needle.length - 2] = 0x30;   // the '1' becomes '0'
+          changed++;
+        }
+      }
+    }
+  }
+  return changed;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ZIP  —  stored-only, for handing back a batch of stills.
+   JPEGs do not compress, so there is nothing to gain from deflate here.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(buf) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+function writeZip(files) {
+  const parts = [], central = [];
+  let offset = 0;
+
+  for (const { name, data } of files) {
+    const nameBytes = utf8enc.encode(name);
+    const flags = nameBytes.some(b => b > 0x7F) ? 0x0800 : 0;
+    const crc = crc32(data);
+
+    const local = new Uint8Array(30 + nameBytes.length);
+    const ldv = new DataView(local.buffer);
+    ldv.setUint32(0, 0x04034b50, true);
+    ldv.setUint16(4, 20, true);
+    ldv.setUint16(6, flags, true);
+    ldv.setUint16(8, 0, true);              // stored
+    ldv.setUint16(12, 0x21, true);          // 1980-01-01
+    ldv.setUint32(14, crc, true);
+    ldv.setUint32(18, data.length, true);
+    ldv.setUint32(22, data.length, true);
+    ldv.setUint16(26, nameBytes.length, true);
+    local.set(nameBytes, 30);
+    parts.push(local, data);
+
+    const cen = new Uint8Array(46 + nameBytes.length);
+    const cdv = new DataView(cen.buffer);
+    cdv.setUint32(0, 0x02014b50, true);
+    cdv.setUint16(4, 20, true);
+    cdv.setUint16(6, 20, true);
+    cdv.setUint16(8, flags, true);
+    cdv.setUint16(10, 0, true);
+    cdv.setUint16(14, 0x21, true);
+    cdv.setUint32(16, crc, true);
+    cdv.setUint32(20, data.length, true);
+    cdv.setUint32(24, data.length, true);
+    cdv.setUint16(28, nameBytes.length, true);
+    cdv.setUint32(42, offset, true);
+    cen.set(nameBytes, 46);
+    central.push(cen);
+
+    offset += local.length + data.length;
+  }
+
+  const eocd = new Uint8Array(22);
+  const edv = new DataView(eocd.buffer);
+  edv.setUint32(0, 0x06054b50, true);
+  edv.setUint16(8, central.length, true);
+  edv.setUint16(10, central.length, true);
+  edv.setUint32(12, central.reduce((n, c) => n + c.length, 0), true);
+  edv.setUint32(16, offset, true);
+
+  return new Blob([...parts, ...central, eocd], { type: 'application/zip' });
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   APP
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const $ = id => document.getElementById(id);
+const state = { files: [], results: [], runId: 0, runs: 0 };
+
+const KB = 1024, MB = KB * 1024;
+function fmtBytes(n) {
+  if (n < KB) return n + ' B';
+  if (n < MB) return (n / KB).toFixed(n < 10 * KB ? 1 : 0) + ' KB';
+  return (n / MB).toFixed(n < 10 * MB ? 2 : 1) + ' MB';
+}
+const pct = (part, whole) => whole > 0 ? Math.round(part / whole * 100) : 0;
+const baseOf = n => n.includes('.') ? n.slice(0, n.lastIndexOf('.')) : n;
+const extOf = n => n.includes('.') ? n.slice(n.lastIndexOf('.')) : '.jpg';
+
+function setMessage(text, kind) {
+  const el = $('msg');
+  el.hidden = !text;
+  el.textContent = text || '';
+  el.className = 'msg' + (kind ? ' ' + kind : '');
+}
+
+/** Strip one file. Never throws: a failure becomes a row in the table. */
+async function strip(file, opts) {
+  const row = { name: file.name, size: file.size };
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const { end, segments } = parseJpeg(bytes);
+
+    row.still = bytes.slice(0, end);          // a copy, so edits below are safe
+    row.trailer = bytes.length - end;
+    row.labels = row.trailer > 0 ? describeTrailer(bytes, end).labels : [];
+    row.flagsCleared = opts.clearXmp ? clearMotionFlags(row.still, segments) : 0;
+    row.status = row.trailer > 0 ? 'stripped' : 'clean';
+  } catch (err) {
+    row.status = 'error';
+    row.error = err.message;
+  }
+  return row;
+}
+
+async function run(files) {
+  const id = ++state.runId;
+  state.files = files;
+  const opts = { clearXmp: $('clearxmp').checked };
+  const results = [];
+
+  $('report').hidden = false;
+  $('prog').hidden = $('progText').hidden = false;
+  $('prog').max = files.length;
+  $('headline').textContent = 'Reading…';
+  $('save').disabled = true;
+
+  for (let i = 0; i < files.length; i++) {
+    if (id !== state.runId) return;
+    results.push(await strip(files[i], opts));
+    $('prog').value = i + 1;
+    $('progText').textContent = `${i + 1}/${files.length}`;
+    if (i % 4 === 3) await new Promise(r => setTimeout(r, 0));
+  }
+  if (id !== state.runId) return;
+
+  state.results = results;
+  state.runs++;
+  $('prog').hidden = $('progText').hidden = true;
+  render();
+  $('save').disabled = !results.some(r => r.still);
+}
+
+function render() {
+  const rows = state.results;
+  const usable = rows.filter(r => r.still);
+  const original = usable.reduce((n, r) => n + r.size, 0);
+  const still = usable.reduce((n, r) => n + r.still.length, 0);
+  const reclaimed = original - still;
+  const withClip = rows.filter(r => r.status === 'stripped').length;
+  const failed = rows.filter(r => r.status === 'error');
+
+  $('stats').innerHTML = [
+    ['Files', String(rows.length), failed.length ? `${failed.length} unreadable` : ''],
+    ['Motion photos', String(withClip), withClip === rows.length ? 'all of them' : `${rows.length - withClip} without a clip`],
+    ['Total size', fmtBytes(original), ''],
+    ['Video removed', fmtBytes(reclaimed), reclaimed ? `${pct(reclaimed, original)}% of the total` : ''],
+  ].map(([k, v, n]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div><div class="n">${n}</div></div>`).join('');
+
+  const kinds = [...new Set(rows.flatMap(r => r.labels || []))];
+  $('foundNote').textContent = kinds.length
+    ? 'Detected in the appended data: ' + kinds.join(', ') + '.'
+    : (withClip ? 'Appended data of an unrecognised kind — removed all the same.' : '');
+
+  $('headline').innerHTML = reclaimed > 0
+    ? `<b>${fmtBytes(still)}</b> <span style="color:var(--ink-dim)">from ${fmtBytes(original)}</span> &nbsp;
+       <span class="savings">− ${fmtBytes(reclaimed)} (${pct(reclaimed, original)}%)</span>`
+    : `<b>${fmtBytes(still)}</b> <span class="savings none">— no video clips found</span>`;
+
+  $('tbl').tBodies[0].innerHTML = rows.map(r => {
+    const label = {
+      stripped: '<span class="pill ok">clip removed</span>',
+      clean: '<span class="pill">no clip</span>',
+      error: `<span class="pill bad">${r.error || 'failed'}</span>`,
+    }[r.status];
+    const contains = (r.labels && r.labels.length) ? r.labels.join(', ')
+      : r.status === 'stripped' ? 'unrecognised trailer' : '—';
+    return `<tr>
+      <td class="name" title="${r.name}">${r.name}</td>
+      <td>${contains}</td>
+      <td class="num">${fmtBytes(r.size)}</td>
+      <td class="num">${r.still ? fmtBytes(r.still.length) : '—'}</td>
+      <td class="num delta${r.trailer > 0 ? '' : ' zero'}">${r.trailer > 0 ? '−' + fmtBytes(r.trailer) : '—'}</td>
+      <td>${label}</td>
+    </tr>`;
+  }).join('');
+
+  const cleared = rows.reduce((n, r) => n + (r.flagsCleared || 0), 0);
+  const warn = $('warn');
+  if (failed.length) {
+    warn.hidden = false;
+    warn.textContent = `${failed.length} file${failed.length > 1 ? 's' : ''} could not be read as JPEG and ${failed.length > 1 ? 'are' : 'is'} not included in the output: `
+      + failed.map(f => f.name).join(', ');
+  } else if (!withClip && rows.length) {
+    warn.hidden = false;
+    warn.textContent = 'None of these files has a video clip appended — they are already plain JPEGs. Saving would just copy them.';
+  } else {
+    warn.hidden = true;
+  }
+  $('save').textContent = usable.length > 1 ? `Save ${usable.length} stills (ZIP)` : 'Save still';
+  if (cleared) $('foundNote').textContent += ` Cleared ${cleared} motion-photo flag${cleared > 1 ? 's' : ''} from XMP.`;
+}
+
+/* ---------- saving ---------- */
+
+function outputName(name, suffix, taken) {
+  let candidate = baseOf(name) + suffix + extOf(name);
+  for (let i = 2; taken.has(candidate); i++) candidate = `${baseOf(name)}${suffix}-${i}${extOf(name)}`;
+  taken.add(candidate);
+  return candidate;
+}
+
+function buildOutput() {
+  const suffix = $('suffix').value;
+  const taken = new Set();
+  const files = state.results
+    .filter(r => r.still)
+    .map(r => ({ name: outputName(r.name, suffix, taken), data: r.still }));
+
+  if (!files.length) throw new Error('There is nothing to save.');
+  if (files.length === 1) {
+    return { blob: new Blob([files[0].data], { type: 'image/jpeg' }), name: files[0].name };
+  }
+  return { blob: writeZip(files), name: 'motion-photo-stills.zip' };
+}
+
+function save() {
+  try {
+    const { blob, name } = buildOutput();
+    const url = URL.createObjectURL(blob);
+    const a = Object.assign(document.createElement('a'), { href: url, download: name });
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    setMessage(`Saved ${name} — ${fmtBytes(blob.size)}.`);
+  } catch (err) {
+    setMessage('Could not save: ' + err.message, 'error');
+  }
+}
+
+/* ---------- events ---------- */
+
+const drop = $('drop');
+drop.addEventListener('click', () => $('file').click());
+drop.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); }
+});
+$('file').addEventListener('change', e => {
+  if (e.target.files.length) { setMessage(''); run([...e.target.files]); }
+});
+for (const type of ['dragenter', 'dragover']) {
+  drop.addEventListener(type, e => { e.preventDefault(); drop.classList.add('over'); });
+}
+for (const type of ['dragleave', 'drop']) {
+  drop.addEventListener(type, e => { e.preventDefault(); drop.classList.remove('over'); });
+}
+drop.addEventListener('drop', e => {
+  const files = [...(e.dataTransfer?.files || [])];
+  if (files.length) { setMessage(''); run(files); }
+});
+
+// Re-running on an option change reuses the files already chosen.
+$('controls').addEventListener('input', () => {
+  if (state.files.length) run(state.files);
+});
+$('save').addEventListener('click', save);
+$('reset').addEventListener('click', () => {
+  state.runId++;
+  state.files = [];
+  $('report').hidden = true;
+  $('file').value = '';
+  setMessage('');
+  window.scrollTo({ top: 0 });
+});
+
+// Test hook, so the end-to-end suite can drive the page directly.
+window.__mps = { state, parseJpeg, buildOutput };
+</script>
+</body>
+</html>
